@@ -1,31 +1,943 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-  <meta charset="utf-8" />
-  <title>Bili-Lite</title>
-  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
-  <link rel="stylesheet" href="style.css" />
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>哔哩哔哩 Lite - 第三方客户端</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        ::-webkit-scrollbar { width: 4px; height: 4px; }
+        ::-webkit-scrollbar-track { background: #1a1a2e; }
+        ::-webkit-scrollbar-thumb { background: #fb7299; border-radius: 2px; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        .bili-pink { color: #fb7299; }
+        .bg-bili-pink { background-color: #fb7299; }
+        .hover-bili-pink:hover { background-color: #fc8bab; }
+        .video-container { position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; background: #000; }
+        .video-container iframe { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: none; }
+        .glass { background: rgba(255, 255, 255, 0.1); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.1); }
+        .loader { border: 3px solid rgba(251, 114, 153, 0.3); border-radius: 50%; border-top: 3px solid #fb7299; width: 24px; height: 24px; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        @keyframes pulse-pink { 0%, 100% { box-shadow: 0 0 0 0 rgba(251, 114, 153, 0.7); } 50% { box-shadow: 0 0 0 10px rgba(251, 114, 153, 0); } }
+        .pulse-btn { animation: pulse-pink 2s infinite; }
+        .line-clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+        
+        @media (max-width: 320px) {
+            .watch-hidden { display: none !important; }
+            .watch-text-xs { font-size: 0.65rem !important; }
+            .watch-p-1 { padding: 0.25rem !important; }
+        }
+        
+        .skeleton { background: linear-gradient(90deg, #1f2937 25%, #374151 50%, #1f2937 75%); background-size: 200% 100%; animation: loading 1.5s infinite; }
+        @keyframes loading { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+    </style>
 </head>
-<body>
-  <header>
-    <h1>Bili-Lite</h1>
-    <div id="user"></div>
-  </header>
+<body class="bg-gray-900 text-white font-sans antialiased overflow-x-hidden">
 
-  <main>
-    <section id="login-section">
-      <p>请先扫码登录</p>
-      <img id="qr" />
-      <p id="qr-tip">正在获取二维码…</p>
-    </section>
+    <!-- 登录模态框 -->
+    <div id="loginModal" class="fixed inset-0 bg-black/95 z-50 flex items-center justify-center p-4 hidden">
+        <div class="glass rounded-2xl p-6 w-full max-w-sm border border-pink-500/30 relative">
+            <button onclick="hideLogin()" class="absolute top-4 right-4 text-gray-400 hover:text-white">
+                <i class="fas fa-times"></i>
+            </button>
+            
+            <div class="text-center mb-6">
+                <div class="w-16 h-16 bg-bili-pink rounded-full flex items-center justify-center mx-auto mb-4 pulse-btn">
+                    <i class="fas fa-tv text-2xl text-white"></i>
+                </div>
+                <h2 class="text-xl font-bold bili-pink">哔哩哔哩 Lite</h2>
+                <p class="text-gray-400 text-sm mt-2">第三方客户端</p>
+            </div>
+            
+            <!-- 扫码登录 -->
+            <div id="qrSection" class="space-y-4">
+                <div class="bg-white p-4 rounded-lg w-48 h-48 mx-auto flex items-center justify-center relative">
+                    <img id="qrImage" src="" class="w-full h-full hidden">
+                    <div id="qrLoading" class="text-center">
+                        <div class="loader mx-auto mb-2"></div>
+                        <p class="text-xs text-gray-600">加载中...</p>
+                    </div>
+                    <div id="qrExpired" class="hidden absolute inset-0 bg-black/80 flex items-center justify-center rounded-lg cursor-pointer" onclick="refreshQRCode()">
+                        <span class="text-white text-sm">点击刷新</span>
+                    </div>
+                </div>
+                <p class="text-center text-xs text-gray-400">请使用哔哩哔哩APP扫码</p>
+                <p id="qrStatus" class="text-center text-xs bili-pink h-4"></p>
+            </div>
 
-    <section id="video-section" hidden>
-      <input id="bv" placeholder="BV号/链接" />
-      <button id="load">播放</button>
-      <video id="player" controls preload="metadata" playsinline></video>
-    </section>
-  </main>
+            <!-- Token 登录 -->
+            <div class="mt-6 pt-6 border-t border-gray-700">
+                <button onclick="toggleTokenInput()" class="text-xs text-gray-400 hover:text-pink-400 w-full text-center mb-2 flex items-center justify-center gap-1">
+                    手动输入 SESSDATA <i class="fas fa-chevron-down transition-transform" id="tokenArrow"></i>
+                </button>
+                <div id="tokenInput" class="hidden space-y-3">
+                    <div class="text-xs text-gray-500 bg-gray-800/50 p-2 rounded">
+                        1. 浏览器打开B站并登录<br>
+                        2. F12 → Application → Cookies → SESSDATA<br>
+                        3. 复制值并粘贴下方
+                    </div>
+                    <input type="text" id="sessdataInput" placeholder="SESSDATA 值" 
+                           class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-pink-500 font-mono">
+                    <button onclick="manualLogin()" 
+                            class="w-full bg-bili-pink hover-bili-pink text-white py-2 rounded-lg text-sm font-medium transition">
+                        登录
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
 
-  <script src="app.js"></script>
+    <!-- 顶部导航 -->
+    <nav class="fixed top-0 w-full bg-gray-900/95 backdrop-blur-md border-b border-gray-800 z-40">
+        <div class="flex items-center justify-between px-4 py-3 max-w-7xl mx-auto">
+            <div class="flex items-center space-x-2 cursor-pointer" onclick="showHome()">
+                <div class="w-8 h-8 bg-bili-pink rounded-lg flex items-center justify-center">
+                    <i class="fas fa-play text-white text-xs"></i>
+                </div>
+                <span class="font-bold text-lg bili-pink watch-hidden">BiliLite</span>
+            </div>
+            
+            <div class="flex-1 mx-4 watch-hidden">
+                <div class="relative">
+                    <input type="text" id="searchInput" placeholder="搜索视频..." 
+                           class="w-full bg-gray-800 rounded-full px-4 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-pink-500 pl-10"
+                           onkeypress="handleSearch(event)">
+                    <i class="fas fa-search absolute left-3 top-2 text-gray-400 text-xs"></i>
+                </div>
+            </div>
+
+            <div class="flex items-center space-x-3">
+                <button onclick="toggleSearch()" class="md:hidden text-gray-300 hover:text-white">
+                    <i class="fas fa-search"></i>
+                </button>
+                <div id="userAvatar" onclick="toggleUserMenu()" class="relative">
+                    <div class="w-8 h-8 rounded-full bg-gray-700 flex items-center justify-center cursor-pointer overflow-hidden border-2 border-transparent hover:border-pink-500 transition">
+                        <i class="fas fa-user text-gray-400 text-xs" id="userIcon"></i>
+                        <img id="userImg" src="" class="w-full h-full object-cover hidden">
+                    </div>
+                    <!-- 用户菜单 -->
+                    <div id="userMenu" class="hidden absolute right-0 top-10 bg-gray-800 rounded-lg shadow-xl border border-gray-700 py-2 w-32 z-50">
+                        <button onclick="showProfile()" class="w-full text-left px-4 py-2 text-sm hover:bg-gray-700">个人中心</button>
+                        <button onclick="showHistory()" class="w-full text-left px-4 py-2 text-sm hover:bg-gray-700">观看历史</button>
+                        <div class="border-t border-gray-700 my-1"></div>
+                        <button onclick="logout()" class="w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-gray-700">退出登录</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div id="mobileSearch" class="hidden px-4 pb-3 md:hidden">
+            <div class="relative">
+                <input type="text" placeholder="搜索视频..." 
+                       class="w-full bg-gray-800 rounded-lg px-4 py-2 text-sm pl-10"
+                       onkeypress="handleSearch(event)">
+                <i class="fas fa-search absolute left-3 top-2.5 text-gray-400 text-xs"></i>
+            </div>
+        </div>
+    </nav>
+
+    <!-- 分类标签 -->
+    <div class="fixed top-14 w-full bg-gray-900/95 backdrop-blur-md border-b border-gray-800 z-30 overflow-x-auto no-scrollbar watch-hidden">
+        <div class="flex space-x-2 px-4 py-2 min-w-max" id="categoryTabs">
+            <button onclick="switchCategory('0', this)" class="category-btn px-4 py-1.5 rounded-full bg-pink-500 text-white text-sm whitespace-nowrap transition shadow-lg shadow-pink-500/30">推荐</button>
+            <button onclick="switchCategory('1', this)" class="category-btn px-4 py-1.5 rounded-full bg-gray-800 text-gray-300 text-sm whitespace-nowrap transition hover:bg-gray-700">动画</button>
+            <button onclick="switchCategory('3', this)" class="category-btn px-4 py-1.5 rounded-full bg-gray-800 text-gray-300 text-sm whitespace-nowrap transition hover:bg-gray-700">音乐</button>
+            <button onclick="switchCategory('4', this)" class="category-btn px-4 py-1.5 rounded-full bg-gray-800 text-gray-300 text-sm whitespace-nowrap transition hover:bg-gray-700">游戏</button>
+            <button onclick="switchCategory('5', this)" class="category-btn px-4 py-1.5 rounded-full bg-gray-800 text-gray-300 text-sm whitespace-nowrap transition hover:bg-gray-700">娱乐</button>
+            <button onclick="switchCategory('160', this)" class="category-btn px-4 py-1.5 rounded-full bg-gray-800 text-gray-300 text-sm whitespace-nowrap transition hover:bg-gray-700">生活</button>
+            <button onclick="switchCategory('119', this)" class="category-btn px-4 py-1.5 rounded-full bg-gray-800 text-gray-300 text-sm whitespace-nowrap transition hover:bg-gray-700">鬼畜</button>
+            <button onclick="switchCategory('129', this)" class="category-btn px-4 py-1.5 rounded-full bg-gray-800 text-gray-300 text-sm whitespace-nowrap transition hover:bg-gray-700">舞蹈</button>
+            <button onclick="switchCategory('181', this)" class="category-btn px-4 py-1.5 rounded-full bg-gray-800 text-gray-300 text-sm whitespace-nowrap transition hover:bg-gray-700">影视</button>
+        </div>
+    </div>
+
+    <!-- 主内容区 -->
+    <main class="pt-28 pb-20 px-2 md:px-4 max-w-7xl mx-auto min-h-screen" id="mainContent">
+        <!-- 视频网格 -->
+        <div id="videoGrid" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 md:gap-4">
+            <!-- 骨架屏 -->
+            <div class="space-y-2"><div class="skeleton rounded-lg aspect-video"></div><div class="skeleton h-4 rounded w-3/4"></div><div class="skeleton h-3 rounded w-1/2"></div></div>
+            <div class="space-y-2"><div class="skeleton rounded-lg aspect-video"></div><div class="skeleton h-4 rounded w-3/4"></div><div class="skeleton h-3 rounded w-1/2"></div></div>
+            <div class="space-y-2"><div class="skeleton rounded-lg aspect-video"></div><div class="skeleton h-4 rounded w-3/4"></div><div class="skeleton h-3 rounded w-1/2"></div></div>
+            <div class="space-y-2"><div class="skeleton rounded-lg aspect-video"></div><div class="skeleton h-4 rounded w-3/4"></div><div class="skeleton h-3 rounded w-1/2"></div></div>
+        </div>
+        
+        <div class="mt-8 text-center">
+            <button onclick="loadMore()" id="loadMoreBtn" class="px-6 py-2 bg-gray-800 rounded-full text-sm text-gray-400 hover:bg-gray-700 transition hidden">
+                加载更多
+            </button>
+            <div id="loadingMore" class="hidden">
+                <div class="loader mx-auto"></div>
+            </div>
+        </div>
+    </main>
+
+    <!-- 搜索页面 -->
+    <div id="searchPage" class="fixed inset-0 bg-gray-900 z-40 hidden pt-20 overflow-y-auto">
+        <div class="max-w-7xl mx-auto px-4">
+            <div class="flex items-center gap-4 mb-6">
+                <h2 class="text-lg font-bold">搜索结果: <span id="searchKeyword" class="bili-pink"></span></h2>
+                <button onclick="closeSearch()" class="text-gray-400 hover:text-white">
+                    <i class="fas fa-times"></i> 关闭
+                </button>
+            </div>
+            <div id="searchResults" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+            </div>
+        </div>
+    </div>
+
+    <!-- 视频播放页 -->
+    <div id="videoPlayer" class="fixed inset-0 bg-gray-900 z-50 hidden overflow-y-auto">
+        <div class="relative bg-black w-full sticky top-0 z-10" id="playerContainer">
+            <div class="video-container">
+                <iframe id="bilibiliIframe" src="" allowfullscreen sandbox="allow-same-origin allow-scripts allow-popups allow-forms"></iframe>
+            </div>
+            <button onclick="closePlayer()" class="absolute top-4 left-4 w-10 h-10 bg-black/50 rounded-full flex items-center justify-center text-white hover:bg-black/70 transition z-20 backdrop-blur-sm">
+                <i class="fas fa-arrow-left"></i>
+            </button>
+            <button onclick="toggleFullscreen()" class="absolute top-4 right-4 w-10 h-10 bg-black/50 rounded-full flex items-center justify-center text-white hover:bg-black/70 transition z-20 backdrop-blur-sm">
+                <i class="fas fa-expand"></i>
+            </button>
+        </div>
+
+        <div class="p-4 max-w-4xl mx-auto pb-24">
+            <h1 id="videoTitle" class="text-lg md:text-xl font-bold mb-2 line-clamp-2 leading-snug"></h1>
+            
+            <div class="flex items-center justify-between text-xs md:text-sm text-gray-400 mb-4">
+                <div class="flex items-center space-x-3 md:space-x-4">
+                    <span id="videoViews"><i class="fas fa-eye mr-1"></i>--</span>
+                    <span id="videoDanmaku"><i class="fas fa-comment-dots mr-1"></i>--</span>
+                    <span id="videoTime">--</span>
+                </div>
+                <div class="flex space-x-2 md:space-x-3">
+                    <button onclick="toggleLike()" id="likeBtn" class="flex items-center space-x-1 hover:text-pink-500 transition px-2 py-1 rounded-full hover:bg-gray-800">
+                        <i class="far fa-thumbs-up"></i>
+                        <span id="likeCount">--</span>
+                    </button>
+                    <button onclick="toggleCoin()" id="coinBtn" class="flex items-center space-x-1 hover:text-yellow-500 transition px-2 py-1 rounded-full hover:bg-gray-800">
+                        <i class="fas fa-coins"></i>
+                        <span id="coinCount">--</span>
+                    </button>
+                    <button onclick="shareVideo()" class="flex items-center space-x-1 hover:text-blue-400 transition px-2 py-1 rounded-full hover:bg-gray-800">
+                        <i class="fas fa-share"></i>
+                    </button>
+                </div>
+            </div>
+
+            <div class="flex items-center justify-between py-4 border-t border-b border-gray-800 mb-6">
+                <div class="flex items-center space-x-3 cursor-pointer" onclick="goToSpace()">
+                    <img id="upAvatar" src="" class="w-10 h-10 rounded-full bg-gray-800 object-cover border border-gray-700">
+                    <div>
+                        <div id="upName" class="font-medium text-sm hover:text-pink-400 transition">--</div>
+                        <div id="upFans" class="text-xs text-gray-500">--粉丝</div>
+                    </div>
+                </div>
+                <button onclick="toggleFollow()" id="followBtn" class="px-4 py-1.5 bg-pink-500 hover:bg-pink-600 rounded-full text-sm font-medium transition shadow-lg shadow-pink-500/20">
+                    + 关注
+                </button>
+            </div>
+
+            <div class="mb-6">
+                <h3 class="font-bold mb-3 text-sm text-gray-300 flex items-center gap-2">
+                    <i class="fas fa-fire text-pink-500"></i> 相关推荐
+                </h3>
+                <div id="relatedVideos" class="grid grid-cols-2 md:grid-cols-3 gap-3">
+                </div>
+            </div>
+
+            <div class="bg-gray-800/50 rounded-lg p-4 text-sm text-gray-400">
+                <p class="mb-2"><i class="fas fa-info-circle mr-2"></i>提示</p>
+                <p class="text-xs">由于浏览器安全限制，部分高清视频需要使用官方播放器。如遇播放问题，请点击右上角在B站打开。</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- 底部导航 -->
+    <nav class="fixed bottom-0 w-full bg-gray-900/95 backdrop-blur-md border-t border-gray-800 z-40 md:hidden pb-safe">
+        <div class="flex justify-around items-center py-2">
+            <button onclick="showHome()" class="nav-btn flex flex-col items-center space-y-1 text-pink-500" data-page="home">
+                <i class="fas fa-home text-lg"></i>
+                <span class="text-[10px]">首页</span>
+            </button>
+            <button onclick="showTrending()" class="nav-btn flex flex-col items-center space-y-1 text-gray-400 hover:text-pink-500 transition" data-page="trending">
+                <i class="fas fa-fire text-lg"></i>
+                <span class="text-[10px]">热门</span>
+            </button>
+            <button onclick="showHistory()" class="nav-btn flex flex-col items-center space-y-1 text-gray-400 hover:text-pink-500 transition" data-page="history">
+                <i class="fas fa-history text-lg"></i>
+                <span class="text-[10px]">历史</span>
+            </button>
+            <button onclick="showProfile()" class="nav-btn flex flex-col items-center space-y-1 text-gray-400 hover:text-pink-500 transition" data-page="profile">
+                <i class="fas fa-user text-lg"></i>
+                <span class="text-[10px]">我的</span>
+            </button>
+        </div>
+    </nav>
+
+    <!-- Toast提示 -->
+    <div id="toast" class="fixed top-20 left-1/2 transform -translate-x-1/2 bg-gray-800/90 backdrop-blur px-4 py-2 rounded-full text-sm shadow-lg border border-gray-700 hidden z-50 transition-all duration-300 flex items-center gap-2">
+        <i class="fas fa-info-circle text-pink-500"></i>
+        <span id="toastText"></span>
+    </div>
+
+    <script>
+        // ==================== 配置 ====================
+        // 替换为你的 Cloudflare Worker 地址
+        const API_BASE = 'https://bilibili-api-proxy.你的子域名.workers.dev';
+        
+        // ==================== 全局状态 ====================
+        let currentPage = 1;
+        let currentCategory = '0';
+        let isLogin = false;
+        let userInfo = null;
+        let sessdata = localStorage.getItem('bili_sessdata') || '';
+        let currentVideos = [];
+        let qrCheckInterval = null;
+        let currentBvid = '';
+
+        // ==================== 初始化 ====================
+        document.addEventListener('DOMContentLoaded', () => {
+            initApp();
+        });
+
+        async function initApp() {
+            if (sessdata) {
+                await checkLogin();
+            }
+            await loadVideos();
+        }
+
+        // ==================== API 请求封装 ====================
+        async function apiRequest(endpoint, options = {}) {
+            const url = `${API_BASE}${endpoint}`;
+            const headers = {
+                'SESSDATA': sessdata,
+                ...options.headers
+            };
+            
+            try {
+                const response = await fetch(url, { ...options, headers });
+                if (!response.ok) throw new Error('Network response was not ok');
+                return await response.json();
+            } catch (error) {
+                console.error('API Error:', error);
+                showToast('请求失败，请检查网络');
+                throw error;
+            }
+        }
+
+        // ==================== 登录相关 ====================
+        async function checkLogin() {
+            try {
+                const data = await apiRequest('/api/nav');
+                if (data.data && data.data.isLogin) {
+                    isLogin = true;
+                    userInfo = data.data;
+                    updateUserUI();
+                    return true;
+                } else {
+                    // SESSDATA 无效
+                    logout();
+                    return false;
+                }
+            } catch (e) {
+                return false;
+            }
+        }
+
+        function showLogin() {
+            if (isLogin) return;
+            document.getElementById('loginModal').classList.remove('hidden');
+            generateQRCode();
+        }
+
+        function hideLogin() {
+            document.getElementById('loginModal').classList.add('hidden');
+            if (qrCheckInterval) {
+                clearInterval(qrCheckInterval);
+            }
+        }
+
+        function toggleTokenInput() {
+            const input = document.getElementById('tokenInput');
+            const arrow = document.getElementById('tokenArrow');
+            input.classList.toggle('hidden');
+            arrow.style.transform = input.classList.contains('hidden') ? 'rotate(0deg)' : 'rotate(180deg)';
+        }
+
+        async function manualLogin() {
+            const token = document.getElementById('sessdataInput').value.trim();
+            if (!token) {
+                showToast('请输入SESSDATA');
+                return;
+            }
+            sessdata = token;
+            localStorage.setItem('bili_sessdata', sessdata);
+            
+            if (await checkLogin()) {
+                hideLogin();
+                showToast('登录成功！欢迎 ' + (userInfo.uname || '用户'));
+                loadVideos(1); // 刷新推荐（登录后推荐更精准）
+            } else {
+                showToast('登录失败，请检查SESSDATA');
+                sessdata = '';
+                localStorage.removeItem('bili_sessdata');
+            }
+        }
+
+        async function generateQRCode() {
+            try {
+                document.getElementById('qrLoading').classList.remove('hidden');
+                document.getElementById('qrImage').classList.add('hidden');
+                document.getElementById('qrExpired').classList.add('hidden');
+                
+                const data = await apiRequest('/api/qrcode/generate');
+                if (data.data) {
+                    const qrUrl = data.data.url;
+                    const qrKey = data.data.qrcode_key;
+                    
+                    // 使用 QRCode.js 或 API 生成二维码图片
+                    document.getElementById('qrImage').src = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrUrl)}`;
+                    document.getElementById('qrImage').classList.remove('hidden');
+                    document.getElementById('qrLoading').classList.add('hidden');
+                    
+                    // 开始轮询检查状态
+                    startQRCheck(qrKey);
+                }
+            } catch (e) {
+                showToast('二维码生成失败');
+            }
+        }
+
+        function startQRCheck(qrKey) {
+            if (qrCheckInterval) clearInterval(qrCheckInterval);
+            
+            let attempts = 0;
+            qrCheckInterval = setInterval(async () => {
+                attempts++;
+                if (attempts > 60) { // 3分钟后过期
+                    clearInterval(qrCheckInterval);
+                    document.getElementById('qrExpired').classList.remove('hidden');
+                    document.getElementById('qrStatus').textContent = '二维码已过期';
+                    return;
+                }
+                
+                try {
+                    const data = await apiRequest(`/api/qrcode/poll?qrcode_key=${qrKey}`);
+                    const status = data.data.code;
+                    
+                    // 0: 扫码成功, 86038: 过期, 86090: 已确认, 86101: 未扫码
+                    if (status === 0) {
+                        clearInterval(qrCheckInterval);
+                        document.getElementById('qrStatus').textContent = '登录成功！';
+                        
+                        // 从回调URL提取SESSDATA（需要后端支持返回）
+                        if (data.data.refresh_token) {
+                            // 实际项目中这里需要处理cookie
+                            showToast('请使用手动登录方式');
+                        }
+                    } else if (status === 86090) {
+                        document.getElementById('qrStatus').textContent = '请在手机上确认登录';
+                    } else if (status === 86038) {
+                        clearInterval(qrCheckInterval);
+                        document.getElementById('qrExpired').classList.remove('hidden');
+                        document.getElementById('qrStatus').textContent = '二维码已过期';
+                    }
+                } catch (e) {
+                    console.error('QR check error:', e);
+                }
+            }, 3000);
+        }
+
+        function refreshQRCode() {
+            generateQRCode();
+        }
+
+        function logout() {
+            sessdata = '';
+            localStorage.removeItem('bili_sessdata');
+            isLogin = false;
+            userInfo = null;
+            updateUserUI();
+            showToast('已退出登录');
+            toggleUserMenu(false);
+        }
+
+        // ==================== 视频加载 ====================
+        async function loadVideos(page = 1, category = currentCategory) {
+            const grid = document.getElementById('videoGrid');
+            
+            if (page === 1) {
+                grid.innerHTML = Array(8).fill(0).map(() => `
+                    <div class="space-y-2">
+                        <div class="skeleton rounded-lg aspect-video"></div>
+                        <div class="skeleton h-4 rounded w-3/4"></div>
+                        <div class="skeleton h-3 rounded w-1/2"></div>
+                    </div>
+                `).join('');
+            } else {
+                document.getElementById('loadingMore').classList.remove('hidden');
+                document.getElementById('loadMoreBtn').classList.add('hidden');
+            }
+
+            try {
+                let endpoint = '';
+                if (category === '0') {
+                    endpoint = `/api/recommend?idx=${(page - 1) * 20}`;
+                } else {
+                    endpoint = `/api/region?rid=${category}&pn=${page}`;
+                }
+
+                const data = await apiRequest(endpoint);
+                
+                if (data.data && (data.data.item || data.data.archives)) {
+                    const videos = data.data.item || data.data.archives || [];
+                    
+                    if (page === 1) {
+                        grid.innerHTML = '';
+                        currentVideos = videos;
+                    } else {
+                        currentVideos.push(...videos);
+                    }
+
+                    videos.forEach(video => {
+                        grid.appendChild(createVideoCard(video));
+                    });
+
+                    currentPage = page;
+                    document.getElementById('loadMoreBtn').classList.remove('hidden');
+                } else {
+                    if (page === 1) {
+                        grid.innerHTML = '<div class="col-span-full text-center text-gray-500 py-10">暂无数据</div>';
+                    }
+                }
+            } catch (e) {
+                if (page === 1) {
+                    grid.innerHTML = '<div class="col-span-full text-center text-gray-500 py-10">加载失败，请重试</div>';
+                }
+            } finally {
+                document.getElementById('loadingMore').classList.add('hidden');
+            }
+        }
+
+        function createVideoCard(video) {
+            const div = document.createElement('div');
+            div.className = 'group cursor-pointer animate-fade-in';
+            div.onclick = () => playVideo(video);
+            
+            const bvid = video.bvid || video.param;
+            const title = video.title || '无标题';
+            const cover = video.pic || video.cover || '';
+            const author = video.owner?.name || video.author || '未知UP';
+            const views = video.stat?.view || video.play || 0;
+            const danmaku = video.stat?.danmaku || video.video_review || 0;
+            const duration = video.duration ? formatDuration(video.duration) : (video.length || '');
+            
+            div.innerHTML = `
+                <div class="relative rounded-lg overflow-hidden bg-gray-800 aspect-video shadow-lg">
+                    <img src="${cover}" 
+                         class="w-full h-full object-cover group-hover:scale-105 transition duration-500" 
+                         loading="lazy"
+                         onerror="this.src='https://via.placeholder.com/320x180/1f2937/fb7299?text=No+Image'">
+                    <div class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 via-black/50 to-transparent p-2 pt-8">
+                        <div class="flex justify-between text-[10px] text-gray-200 font-medium">
+                            <span class="flex items-center gap-1"><i class="fas fa-play text-[8px]"></i>${formatNumber(views)}</span>
+                            <span class="flex items-center gap-1"><i class="fas fa-comment-dots text-[8px]"></i>${formatNumber(danmaku)}</span>
+                        </div>
+                    </div>
+                    ${duration ? `<div class="absolute top-2 right-2 bg-black/70 px-1.5 py-0.5 rounded text-[10px] font-medium backdrop-blur-sm">${duration}</div>` : ''}
+                </div>
+                <div class="mt-2 px-1">
+                    <h3 class="text-sm font-medium line-clamp-2 leading-tight group-hover:text-pink-400 transition watch-text-xs">${title}</h3>
+                    <p class="text-xs text-gray-500 mt-1 truncate flex items-center gap-1 watch-text-xs">
+                        <i class="fas fa-user-circle text-[10px]"></i> ${author}
+                    </p>
+                </div>
+            `;
+            return div;
+        }
+
+        // ==================== 视频播放 ====================
+        function playVideo(video) {
+            currentBvid = video.bvid || video.param;
+            const player = document.getElementById('videoPlayer');
+            const iframe = document.getElementById('bilibiliIframe');
+            
+            // 使用B站嵌入播放器（最稳定的方式）
+            iframe.src = `https://player.bilibili.com/player.html?bvid=${currentBvid}&page=1&high_quality=1&danmaku=1&autoplay=1`;
+            
+            // 填充信息
+            document.getElementById('videoTitle').textContent = video.title || '无标题';
+            document.getElementById('videoViews').innerHTML = `<i class="fas fa-eye mr-1"></i>${formatNumber(video.stat?.view || 0)}`;
+            document.getElementById('videoDanmaku').innerHTML = `<i class="fas fa-comment-dots mr-1"></i>${formatNumber(video.stat?.danmaku || 0)}`;
+            document.getElementById('videoTime').textContent = new Date(video.pubdate * 1000).toLocaleDateString() || '';
+            
+            // UP主信息
+            document.getElementById('upName').textContent = video.owner?.name || video.author || '未知UP';
+            document.getElementById('upAvatar').src = video.owner?.face || '';
+            document.getElementById('upFans').textContent = '点击关注';
+            
+            // 互动数据
+            document.getElementById('likeCount').textContent = formatNumber(video.stat?.like || 0);
+            document.getElementById('coinCount').textContent = formatNumber(video.stat?.coin || 0);
+            
+            player.classList.remove('hidden');
+            document.body.style.overflow = 'hidden';
+            
+            // 保存历史
+            addToHistory(video);
+            
+            // 加载相关推荐
+            loadRelated(currentBvid);
+        }
+
+        function closePlayer() {
+            const player = document.getElementById('videoPlayer');
+            const iframe = document.getElementById('bilibiliIframe');
+            iframe.src = '';
+            player.classList.add('hidden');
+            document.body.style.overflow = '';
+            currentBvid = '';
+            
+            if (document.fullscreenElement) {
+                document.exitFullscreen();
+            }
+        }
+
+        function toggleFullscreen() {
+            const container = document.getElementById('playerContainer');
+            if (!document.fullscreenElement) {
+                container.requestFullscreen().catch(err => {
+                    showToast('无法进入全屏: ' + err.message);
+                });
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        async function loadRelated(bvid) {
+            // 使用当前分类的其他视频作为推荐
+            const container = document.getElementById('relatedVideos');
+            container.innerHTML = '<div class="col-span-full text-center py-4"><div class="loader mx-auto"></div></div>';
+            
+            try {
+                // 获取视频详情中的相关推荐，或加载同分类视频
+                const data = await apiRequest(`/api/region?rid=${currentCategory}&pn=${Math.floor(Math.random() * 5) + 1}`);
+                const videos = data.data?.archives?.slice(0, 6) || [];
+                
+                container.innerHTML = '';
+                videos.forEach(video => {
+                    if (video.bvid !== bvid) {
+                        container.appendChild(createVideoCard(video));
+                    }
+                });
+            } catch (e) {
+                container.innerHTML = '<div class="col-span-full text-center text-gray-500 text-sm">加载推荐失败</div>';
+            }
+        }
+
+        // ==================== 搜索功能 ====================
+        function handleSearch(e) {
+            if (e.key === 'Enter') {
+                const keyword = e.target.value.trim();
+                if (keyword) {
+                    performSearch(keyword);
+                    e.target.value = '';
+                    e.target.blur();
+                }
+            }
+        }
+
+        function toggleSearch() {
+            const search = document.getElementById('mobileSearch');
+            search.classList.toggle('hidden');
+            if (!search.classList.contains('hidden')) {
+                search.querySelector('input').focus();
+            }
+        }
+
+        async function performSearch(keyword) {
+            document.getElementById('searchPage').classList.remove('hidden');
+            document.getElementById('searchKeyword').textContent = keyword;
+            const container = document.getElementById('searchResults');
+            container.innerHTML = '<div class="col-span-full flex justify-center py-10"><div class="loader"></div></div>';
+            
+            try {
+                const data = await apiRequest(`/api/search?keyword=${encodeURIComponent(keyword)}`);
+                if (data.data && data.data.result) {
+                    const videos = data.data.result;
+                    container.innerHTML = '';
+                    videos.forEach(video => {
+                        // 转换格式以兼容createVideoCard
+                        const formatted = {
+                            bvid: video.bvid,
+                            title: video.title.replace(/<[^>]+>/g, ''), // 去除HTML标签
+                            pic: video.pic,
+                            owner: { name: video.author },
+                            stat: { view: video.play, danmaku: video.video_review }
+                        };
+                        container.appendChild(createVideoCard(formatted));
+                    });
+                } else {
+                    container.innerHTML = '<div class="col-span-full text-center text-gray-500 py-10">无搜索结果</div>';
+                }
+            } catch (e) {
+                container.innerHTML = '<div class="col-span-full text-center text-gray-500 py-10">搜索失败</div>';
+            }
+        }
+
+        function closeSearch() {
+            document.getElementById('searchPage').classList.add('hidden');
+        }
+
+        // ==================== 分类切换 ====================
+        function switchCategory(tid, btn) {
+            currentCategory = tid;
+            currentPage = 1;
+            
+            // 更新UI
+            document.querySelectorAll('.category-btn').forEach(b => {
+                b.classList.remove('bg-pink-500', 'text-white', 'shadow-lg', 'shadow-pink-500/30');
+                b.classList.add('bg-gray-800', 'text-gray-300');
+            });
+            btn.classList.remove('bg-gray-800', 'text-gray-300');
+            btn.classList.add('bg-pink-500', 'text-white', 'shadow-lg', 'shadow-pink-500/30');
+            
+            loadVideos(1);
+        }
+
+        function loadMore() {
+            loadVideos(currentPage + 1);
+        }
+
+        // ==================== 用户功能 ====================
+        function toggleUserMenu(show = null) {
+            const menu = document.getElementById('userMenu');
+            if (show === null) {
+                menu.classList.toggle('hidden');
+            } else if (show) {
+                menu.classList.remove('hidden');
+            } else {
+                menu.classList.add('hidden');
+            }
+        }
+
+        function updateUserUI() {
+            const icon = document.getElementById('userIcon');
+            const img = document.getElementById('userImg');
+            const avatarDiv = document.getElementById('userAvatar').querySelector('div');
+            
+            if (isLogin && userInfo) {
+                icon.classList.add('hidden');
+                img.src = userInfo.face || '';
+                img.classList.remove('hidden');
+                avatarDiv.classList.add('border-pink-500');
+            } else {
+                icon.classList.remove('hidden');
+                img.classList.add('hidden');
+                avatarDiv.classList.remove('border-pink-500');
+            }
+        }
+
+        function showHome() {
+            closeSearch();
+            closePlayer();
+            updateNav('home');
+        }
+
+        function showTrending() {
+            updateNav('trending');
+            // 加载热门
+            loadTrending();
+        }
+
+        async function loadTrending() {
+            currentCategory = '0';
+            document.getElementById('videoGrid').innerHTML = '<div class="col-span-full text-center py-10"><div class="loader mx-auto"></div></div>';
+            try {
+                const data = await apiRequest('/api/popular');
+                if (data.data && data.data.list) {
+                    document.getElementById('videoGrid').innerHTML = '';
+                    data.data.list.forEach(video => {
+                        document.getElementById('videoGrid').appendChild(createVideoCard(video));
+                    });
+                }
+            } catch (e) {
+                showToast('加载热门失败');
+            }
+        }
+
+        async function showHistory() {
+            if (!isLogin) {
+                showLogin();
+                return;
+            }
+            updateNav('history');
+            document.getElementById('videoGrid').innerHTML = '<div class="col-span-full text-center py-10"><div class="loader mx-auto"></div></div>';
+            
+            try {
+                const data = await apiRequest('/api/history');
+                if (data.data && data.data.list) {
+                    document.getElementById('videoGrid').innerHTML = '';
+                    data.data.list.forEach(item => {
+                        const video = {
+                            bvid: item.history.bvid,
+                            title: item.title,
+                            pic: item.cover,
+                            owner: { name: item.author_name },
+                            stat: { view: item.stat.view, danmaku: item.stat.danmaku }
+                        };
+                        document.getElementById('videoGrid').appendChild(createVideoCard(video));
+                    });
+                }
+            } catch (e) {
+                showToast('加载历史记录失败');
+            }
+        }
+
+        function showProfile() {
+            if (!isLogin) {
+                showLogin();
+                return;
+            }
+            updateNav('profile');
+            showToast('个人中心功能开发中...');
+        }
+
+        function updateNav(page) {
+            document.querySelectorAll('.nav-btn').forEach(btn => {
+                if (btn.dataset.page === page) {
+                    btn.classList.remove('text-gray-400');
+                    btn.classList.add('text-pink-500');
+                } else {
+                    btn.classList.add('text-gray-400');
+                    btn.classList.remove('text-pink-500');
+                }
+            });
+        }
+
+        // ==================== 互动功能 ====================
+        function toggleLike() {
+            if (!isLogin) {
+                showToast('请先登录');
+                showLogin();
+                return;
+            }
+            showToast('点赞功能需要额外配置CSRFToken');
+        }
+
+        function toggleCoin() {
+            if (!isLogin) {
+                showToast('请先登录');
+                showLogin();
+                return;
+            }
+            showToast('投币功能需要额外配置');
+        }
+
+        function toggleFollow() {
+            if (!isLogin) {
+                showToast('请先登录');
+                showLogin();
+                return;
+            }
+            const btn = document.getElementById('followBtn');
+            if (btn.textContent.includes('+')) {
+                btn.textContent = '已关注';
+                btn.classList.remove('bg-pink-500', 'hover:bg-pink-600', 'shadow-pink-500/20');
+                btn.classList.add('bg-gray-700', 'text-gray-400');
+                showToast('关注成功');
+            } else {
+                btn.textContent = '+ 关注';
+                btn.classList.add('bg-pink-500', 'hover:bg-pink-600', 'shadow-pink-500/20');
+                btn.classList.remove('bg-gray-700', 'text-gray-400');
+            }
+        }
+
+        function shareVideo() {
+            if (navigator.share) {
+                navigator.share({
+                    title: document.getElementById('videoTitle').textContent,
+                    url: `https://bilibili.com/video/${currentBvid}`
+                });
+            } else {
+                // 复制到剪贴板
+                navigator.clipboard.writeText(`https://bilibili.com/video/${currentBvid}`);
+                showToast('链接已复制');
+            }
+        }
+
+        function goToSpace() {
+            const mid = userInfo?.mid;
+            if (mid) {
+                window.open(`https://space.bilibili.com/${mid}`, '_blank');
+            }
+        }
+
+        // ==================== 工具函数 ====================
+        function formatNumber(num) {
+            if (!num) return '0';
+            if (num >= 100000000) return (num / 100000000).toFixed(1) + '亿';
+            if (num >= 10000) return (num / 10000).toFixed(1) + '万';
+            return num.toString();
+        }
+
+        function formatDuration(seconds) {
+            if (!seconds) return '';
+            const mins = Math.floor(seconds / 60);
+            const secs = seconds % 60;
+            return `${mins}:${secs.toString().padStart(2, '0')}`;
+        }
+
+        function showToast(msg) {
+            const toast = document.getElementById('toast');
+            document.getElementById('toastText').textContent = msg;
+            toast.classList.remove('hidden');
+            setTimeout(() => {
+                toast.classList.add('hidden');
+            }, 2500);
+        }
+
+        function addToHistory(video) {
+            let history = JSON.parse(localStorage.getItem('bili_history') || '[]');
+            history = history.filter(h => h.bvid !== (video.bvid || video.param));
+            history.unshift({
+                ...video,
+                timestamp: Date.now()
+            });
+            history = history.slice(0, 100);
+            localStorage.setItem('bili_history', JSON.stringify(history));
+        }
+
+        // ==================== 事件监听 ====================
+        // 点击外部关闭菜单
+        document.addEventListener('click', (e) => {
+            const userMenu = document.getElementById('userMenu');
+            const userAvatar = document.getElementById('userAvatar');
+            if (!userAvatar.contains(e.target) && !userMenu.classList.contains('hidden')) {
+                userMenu.classList.add('hidden');
+            }
+        });
+
+        // 返回键处理（移动端）
+        document.addEventListener('backbutton', () => {
+            if (!document.getElementById('videoPlayer').classList.contains('hidden')) {
+                closePlayer();
+            } else if (!document.getElementById('searchPage').classList.contains('hidden')) {
+                closeSearch();
+            }
+        });
+
+        // 键盘快捷键
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                if (!document.getElementById('videoPlayer').classList.contains('hidden')) {
+                    closePlayer();
+                }
+            }
+        });
+    </script>
 </body>
-</html>
+                  </html>
