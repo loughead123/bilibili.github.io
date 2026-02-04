@@ -1,5 +1,5 @@
 /* 全局常量 */
-const PROXY = 'https://your-worker.your-subdomain.workers.dev'; // 反向代理地址
+const PROXY = 'bilibili-github-io.pages.dev'; // 反向代理地址
 const LOGIN_KEY = 'bili-lite-token';
 
 /* 工具函数 */
