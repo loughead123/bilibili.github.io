@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <title>Bili-Lite</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header>
+    <h1>Bili-Lite</h1>
+    <div id="user"></div>
+  </header>
+
+  <main>
+    <section id="login-section">
+      <p>请先扫码登录</p>
+      <img id="qr" />
+      <p id="qr-tip">正在获取二维码…</p>
+    </section>
+
+    <section id="video-section" hidden>
+      <input id="bv" placeholder="BV号/链接" />
+      <button id="load">播放</button>
+      <video id="player" controls preload="metadata" playsinline></video>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
